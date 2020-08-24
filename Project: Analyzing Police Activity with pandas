@@ -1,0 +1,182 @@
+#Preparing the data for analysis
+import pandas as pd
+ri = pd.read_csv('police.csv')
+print(ri.head())
+# Count the number of missing values in each column
+print(ri.isnull().sum())
+
+print(ri.shape)
+# Drop the 'county_name' and 'state' columns:county_name column because it only contains missing values, and you'll drop the state column because all of the traffic stops took place in one state (Rhode Island). 
+ri.drop(['county_name', 'state'], axis='columns', inplace=True)
+print(ri.shape)
+
+print(ri.isnull().sum())
+# Drop all rows that are missing 'driver_gender'
+ri.dropna(subset=['driver_gender'], inplace=True)
+# Count the number of missing values in each column (again)
+print(ri.isnull().sum())
+print(ri.shape)
+
+# Examine the head of the 'is_arrested' column, change it to bool and overwrite it to the dataframe and check again
+print(ri.is_arrested.dtype)
+ri['is_arrested'] = ri['is_arrested'].astype('bool')
+print(ri['is_arrested'].dtype)
+
+# Concatenate 'stop_date' and 'stop_time' (separated by a space), convert it to datetime and check the data type
+combined = ri.stop_date.str.cat(ri['stop_time'], sep=' ')
+ri['stop_datetime'] = pd.to_datetime(combined)
+print(ri.dtypes)
+# Set 'stop_datetime' as the index, examine the index and make sure it is no longer a column
+ri.set_index('stop_datetime', inplace=True)
+print(ri.index)
+print(ri.columns)
+
+
+
+# Exploring the relationship between gender and policing
+# Count the unique values in 'violation' and calculate the proportion
+print(ri['violation'].value_counts())
+print(ri['violation'].value_counts(normalize=True))
+
+# Create a DataFrame of female drivers and male drivers and calculate the violation proportion
+female = ri[ri['driver_gender']=='F']
+male = ri[ri['driver_gender']=='M']
+print(female.violation.value_counts(normalize=True))
+print(male.violation.value_counts(normalize=True))
+
+# Create a DataFrame of female drivers and male drivers stopped for speeding and compute the stop outcomes for female and male drivers (as proportions)
+female_and_speeding = ri[(ri.driver_gender == 'F') & (ri.violation == 'Speeding')]
+male_and_speeding = ri[(ri.driver_gender == 'M') & (ri.violation == 'Speeding')]
+print(female_and_speeding.stop_outcome.value_counts(normalize=True))
+print(male_and_speeding.stop_outcome.value_counts(normalize=True))
+
+# Calculate the search rate by counting the values and mean
+print(ri['search_conducted'].dtypes)
+print(ri['search_conducted'].value_counts(normalize=True))
+print(ri['search_conducted'].mean())
+# Comparing search rates by gender
+print(ri[ri.driver_gender=='F'].search_conducted.mean())
+print(ri[ri.driver_gender=='M'].search_conducted.mean())
+print(ri.groupby('driver_gender').search_conducted.mean())
+# Calculate the search rate for each combination of gender and violation
+print(ri.groupby(['driver_gender', 'violation']).search_conducted.mean())
+# Reverse the ordering to group by violation before gender
+print(ri.groupby(['violation','driver_gender']).search_conducted.mean())
+
+# first check to see how many times "Protective Frisk" was the only search type. Then, use a string method to locate all instances in which the driver was frisked.
+print(ri['search_type'].value_counts())
+ri['frisk'] = ri.search_type.str.contains('Protective Frisk', na=False)
+print(ri['frisk'].dtypes)
+print(ri['frisk'].sum())
+
+# compare the rates at which female and male drivers are frisked during a search
+searched = ri[ri.search_conducted == True]
+print(searched.frisk.mean())
+print(searched.groupby('driver_gender').frisk.mean())
+
+
+
+# Calculating the hourly arrest rate and create a line plot
+hourly_arrest_rate = ri.groupby(ri.index.hour).is_arrested.mean()
+import matplotlib.pyplot as plt
+hourly_arrest_rate.plot()
+plt.xlabel('Hour')
+plt.ylabel('Arrest Rate')
+plt.title('Arrest Rate by Time of Day')
+plt.show()
+
+# Calculate the annual rate of drug-related stops and create a line plot
+annual_drug_rate = ri.drugs_related_stop.resample('A').mean()
+annual_drug_rate.plot()
+plt.show()
+# Comparing annual drug and search rates
+annual_search_rate = ri.search_conducted.resample('A').mean()
+annual = pd.concat([annual_drug_rate, annual_search_rate], axis='columns')
+annual.plot(subplots=True)
+plt.show()
+
+# Tallying violations by district
+# Create a frequency table of districts and violations
+all_zones = pd.crosstab(ri.district, ri.violation)
+# Select rows 'Zone K1' through 'Zone K3' and create a bar plot
+k_zones = all_zones.loc['Zone K1':'Zone K3']
+k_zones.plot(kind='bar')
+plt.show()
+# Create a stacked bar plot of 'k_zones'
+k_zones.plot(kind='bar', stacked=True)
+plt.show()
+
+# Converting stop durations to numbers
+print(ri.stop_duration.unique())
+# Create a dictionary that maps strings to integers and convert it by using 'mapping
+mapping = {'0-15 Min':8, '16-30 Min':23, '30+ Min':45}
+ri['stop_minutes'] = ri.stop_duration.map(mapping)
+print(ri.stop_minutes.unique())
+
+# Plotting stop length
+# Calculate the mean 'stop_minutes' for each value in 'violation_raw', Sort it by its values and create a horizontal bar plot
+stop_length = ri.groupby('violation_raw').stop_minutes.mean()
+stop_length.sort_values().plot(kind='barh')
+plt.show()
+
+
+
+# Analyzing the effect of weather on policing
+# examine the temperature columns from the weather dataset to assess whether the data seems trustworthy
+weather = pd.read_csv('weather.csv')
+print(weather[['TMIN', 'TAVG', 'TMAX']].describe())
+weather[['TMIN', 'TAVG', 'TMAX']].plot(kind='box')
+# continue to assess whether the dataset seems trustworthy by plotting the difference between the maximum and minimum temperatures
+weather['TDIFF'] = weather['TMAX'] - weather['TMIN']
+print(weather['TDIFF'].describe()
+weather['TDIFF'].plot(kind='hist', bins=20)
+plt.show()
+
+# uantify "how bad" the weather was each day by counting the number of 1 values in each row, Replace missing values in 'bad_conditions' with '0', Create a histogram to visualize 'bad_conditions'
+WT = weather.loc[:, 'WT01':'WT22']
+weather['bad_conditions'] = WT.sum(axis='columns')
+weather['bad_conditions'] = weather.bad_conditions.fillna(0).astype('int')
+weather['bad_conditions'].plot(kind='hist')
+plt.show()
+
+# use the counts to create a rating system for the weather
+print(weather.bad_conditions.value_counts().sort_index())
+mapping = {0:'good', 1:'bad', 2:'bad', 3:'bad', 4:'bad', 5:'worse', 6:'worse', 7:'worse', 8:'worse', 9:'worse'}
+weather['rating'] = weather.bad_conditions.map(mapping)
+print(weather['rating'].value_counts())
+# Changing the data type to category
+cats = ['good', 'bad', 'worse']
+weather['rating'] = weather.rating.astype('category', ordered=True, categories=cats)
+print(weather['rating'].head())
+
+#prepare the traffic stop and weather rating DataFrames so that they're ready to be merged
+ri.reset_index(inplace=True)
+print(ri.head())
+weather_rating = weather[['DATE', 'rating']]
+print(weather_rating.head())
+#merge the ri and weather_rating DataFrames into a new DataFrame by left join
+print(ri.shape)
+ri_weather = pd.merge(left=ri, right=weather_rating, left_on='stop_date', right_on='DATE', how='left')
+print(ri_weather.shape)
+ri_weather.set_index('stop_datetime', inplace=True)
+
+# Calculate the overall arrest rate, the arrest rate for each 'rating', the arrest rate for each 'violation' and 'rating'
+print(ri_weather.is_arrested.mean())
+print(ri_weather.groupby('rating').is_arrested.mean())
+print(ri_weather.groupby(['violation', 'rating']).is_arrested.mean())
+
+# Save the output of the groupby operation from the last exercise
+arrest_rate = ri_weather.groupby(['violation', 'rating']).is_arrested.mean()
+print(arrest_rate)
+# Print the arrest rate for moving violations in bad weather
+print(arrest_rate.loc['Moving violation', 'bad'])
+# Print the arrest rates for speeding violations in all three weather conditions
+print(arrest_rate.loc['Speeding'])
+
+# Unstack the 'arrest_rate' Series into a DataFrame
+print(arrest_rate.unstack())
+# Create the same DataFrame using a pivot table
+print(ri_weather.pivot_table(index='violation', columns='rating', values='is_arrested'))
+
+
+
