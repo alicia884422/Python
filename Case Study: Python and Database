@@ -1,0 +1,74 @@
+# Import create_engine, MetaData, and define an engine to connect to chapter5.sqlite: engine
+from sqlalchemy import create_engine, MetaData
+engine = create_engine('sqlite:///chapter5.sqlite')
+metadata = MetaData()
+
+# Import Table, Column, String, and Integer and build a census table in the database
+from sqlalchemy import Table, Column, String, Integer
+census = Table('census', metadata,
+               Column('state', String(30)),
+               Column('sex', String(1)),
+               Column('age', Integer()),
+               Column('pop2000', Integer()),
+               Column('pop2008', Integer()))
+metadata.create_all(engine)
+
+# Create an empty list: values_list, iterate over the rows, create a dictionary with the values and append the dictionary to the values list
+values_list = []
+for row in csv_reader:
+    data = {'state': row[0], 'sex': row[1], 'age':row[2], 'pop2000': row[3],
+            'pop2008': row[4]}
+    values_list.append(data)
+    
+# Import insert, build insert statement: stmt and print rowcount
+from sqlalchemy import insert 
+stmt = insert(census)
+results = connection.execute(stmt, values_list)
+print(results.rowcount)    
+
+#Determine the average age by year 2000 population
+from sqlalchemy import select, func
+stmt = select([(func.sum(census.columns.pop2000 * census.columns.age) 
+  					/ func.sum(census.columns.pop2000)).label('average_age')
+			  ])
+# Add the sex column to the select statement anfd group by sex
+stmt = select([ census.columns.sex,
+                (func.sum(census.columns.pop2000 * census.columns.age) 
+  					/ func.sum(census.columns.pop2000)).label('average_age'),               
+			  ])
+stmt = stmt.group_by(census.columns.sex)
+# Execute the query and fetch all the results
+results = connection.execute(stmt).fetchall()
+# Print the sex and average age column for each result
+for result in results:
+    print(result.sex, result.average_age)
+
+# Determine the percentage of population by gender and state
+from sqlalchemy import case, cast, Float
+# Build a query to calculate the percentage of women in 2000: stmt and group by state
+stmt = select([census.columns.state,
+    (func.sum(
+        case([
+            (census.columns.sex == 'F', census.columns.pop2000)
+        ], else_=0)) /
+     cast(func.sum(census.columns.pop2000), Float) * 100).label('percent_female')
+])
+stmt = stmt.group_by(census.columns.state)
+results = connection.execute(stmt).fetchall()
+for result in results:
+    print(result.state, result.percent_female)
+
+# Determine the difference by state from the 2000 and 2008 censuses, group by State and order by Population Change
+stmt = select([census.columns.state,
+      (census.columns.pop2008 - census.columns.pop2000).label('pop_change')
+])
+stmt = stmt.group_by(census.columns.state)
+stmt = stmt.order_by(desc('pop_change'))
+stmt = stmt.limit(10)
+results = connection.execute(stmt).fetchall()
+for result in results:
+    print('{}:{}'.format(result.state, result.pop_change));
+
+
+
+
